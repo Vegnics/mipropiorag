@@ -6,7 +6,7 @@ from PIL import Image
 import torch
 
 
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 """
 proc0 = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
 model0 = BlipForConditionalGeneration.from_pretrained(
