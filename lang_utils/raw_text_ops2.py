@@ -7,10 +7,8 @@ import pymupdf
 import unicodedata
 
 
-COMMON_HEADERS = [
-    "This Lecture Agenda",
-    "Artificial Intelligence",
-]
+import re
+import unicodedata
 
 def normalize_unicode(text: str) -> str:
     replacements = {
@@ -24,10 +22,33 @@ def normalize_unicode(text: str) -> str:
         "–": "-",
         "—": "-",
         "∗": "*",
+        "•": " • ",
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
     return text
+
+def normalize_to_ascii(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+def remove_isolated_characters(text: str) -> str:
+    """
+    Much safer version:
+    only remove isolated lowercase junk letters,
+    but keep meaningful uppercase symbols like P, Q, A, B, I.
+    """
+    text = re.sub(r'\b[b-hj-z]\b', ' ', text)   # optional, conservative
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
+COMMON_HEADERS = [
+    "This Lecture Agenda",
+    "Artificial Intelligence",
+]
 
 def fix_urls(text: str) -> str:
     text = re.sub(r"\s+", " ", text)
@@ -175,23 +196,10 @@ def remove_chinese(text):
     #    cleaned_text += "\nOne Chinese inscription is written."
     return cleaned_text
 
-def remove_isolated_characters(text):
-    # remove isolated single-letter tokens
-    text = re.sub(r'\b[A-Za-z]\b', ' ', text)
-    # normalize whitespace
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
 
 def normalize_case(text):
     return text.lower()
 
-def normalize_to_ascii(text):
-    # convert accented chars → ASCII equivalents
-    text = unicodedata.normalize('NFKD', text)
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    # normalize whitespace
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
 
 def remove_page_numbers(text):
     # remove lines that contain only numbers
@@ -250,26 +258,39 @@ def clean_titles(text):
 def clean_slide_text(text: str):
     text = remove_chinese(text)
     title, text = clean_titles(text)
+
+    title = normalize_unicode(title)
+    title = normalize_to_ascii(title)
+    title = fix_common_ocr_noise(title)
+    title = normalize_whitespace(title)
+
     text = remove_page_numbers(text)
-    text = remove_isolated_characters(text)
-    text = normalize_to_ascii(text)
-    text = normalize_unicode(text)
+    text = normalize_unicode(text)       # moved before ASCII
+    text = normalize_to_ascii(text)      # now safer
     text = fix_urls(text)
     text = fix_common_ocr_noise(text)
     text = remove_source_noise(text)
     text = dedupe_repeated_phrases(text)
     text = normalize_whitespace(text)
-    return title,text
+
+    # optional: only if really needed
+    # text = remove_isolated_characters(text)
+
+    return title, text
+
 
 def clean_page_text(text: str):
     text = remove_chinese(text)
     text = remove_page_numbers(text)
-    text = remove_isolated_characters(text)
+    text = normalize_unicode(text)       # moved before ASCII
     text = normalize_to_ascii(text)
-    text = normalize_unicode(text)
     text = fix_urls(text)
     text = fix_common_ocr_noise(text)
     text = remove_source_noise(text)
     text = dedupe_repeated_phrases(text)
     text = normalize_whitespace(text)
+
+    # optional: only if really needed
+    # text = remove_isolated_characters(text)
+
     return text

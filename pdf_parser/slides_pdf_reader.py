@@ -228,9 +228,9 @@ for k in range(doc.page_count):
         # decode image bytes to PIL, then to numpy
         img = Image.open(io.BytesIO(b["image"])).convert("RGB")
         img = np.array(img)
-        plt.imshow(img)
-        plt.axis("off")
-        plt.show()
+        #plt.imshow(img)
+        #plt.axis("off")
+        #plt.show()
         imgtext += ocr_reader.image2text_ocr(img) # Cleaned OCR
         imgtext += "\n"
     imgtext = clean_page_text(imgtext)

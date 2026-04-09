@@ -11,7 +11,7 @@ model = Qwen2VLForConditionalGeneration.from_pretrained(
     torch_dtype=torch.float16,
     device_map="auto"
 )
-img_np = cv2.imread("examplevqa2.png")
+img_np = cv2.imread("slides_imgs/0003.jpg")
 processor = AutoProcessor.from_pretrained(model_name)
 img = Image.fromarray(img_np.astype(np.uint8))
 
