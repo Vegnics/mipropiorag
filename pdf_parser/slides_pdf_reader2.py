@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 import re
 from urllib.parse import urlparse
-from lang_utils.raw_text_ops2 import clean_slide_text,clean_page_text
+from lang_utils.raw_text_ops2 import clean_slide_text,clean_page_text,remove_isolated_characters
 from visual.ocr import OCR_Reader2 as OCR_Reader
 import pymupdf
 from PIL import Image
@@ -300,7 +300,7 @@ def build_body_chunks_from_blocks(
     order = start_order
 
     for b in body_blocks:
-        raw = clean_chunk_text(b.get("text", ""))
+        raw = remove_isolated_characters(clean_chunk_text(b.get("text", "")))
         if looks_like_noise(raw, min_chars=MIN_CHARS["body"]):
             continue
 
@@ -618,47 +618,6 @@ def rebuild_unified_chunks(slide_record: Dict[str, Any]) -> List[Dict[str, Any]]
 # Pipeline adapters for your current code
 # =========================================================
 
-def text_blocks_from_pymupdf_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Preserve text-box chunks instead of collapsing them too early.
-    This mirrors your current text_from_blocks logic but returns blocks.
-    """
-    out = []
-    block_counter = 0
-
-    for b in blocks:
-        if b.get("type") != 0:
-            continue
-
-        full_text = ""
-        origin = None
-
-        for line in b.get("lines", []):
-            spans = line.get("spans", [])
-            if not spans:
-                continue
-            if origin is None and "origin" in spans[0]:
-                origin = spans[0]["origin"]
-
-            line_text = "".join(span.get("text", "") for span in spans)
-            if line_text.strip():
-                full_text += line_text + " "
-
-        full_text = clean_chunk_text(full_text)
-        if full_text:
-            out.append({
-                "text": full_text,
-                "origin": origin,
-                "block_idx": block_counter,
-            })
-            block_counter += 1
-
-    out = sorted(out, key=lambda x: (
-        x["origin"][1] if x["origin"] is not None else 10**9,
-        x["origin"][0] if x["origin"] is not None else 10**9
-    ))
-    return out
-
 
 def merged_text_from_block_chunks(block_chunks: List[Dict[str, Any]]) -> str:
     return "\n".join(x["text"] for x in block_chunks if x.get("text"))
@@ -675,7 +634,8 @@ def build_slide_record(
     rec = empty_slide_record(slide_id)
 
     rec["title_text"] = clean_chunk_text(title_text)
-    rec["body_text"] = clean_chunk_text(body_text)
+    ## Removing isolated chars  
+    rec["body_text"] = remove_isolated_characters(clean_chunk_text(body_text))
 
     # keep OCR full text for debugging / storage
     clean_ocr_lines = [clean_chunk_text(x) for x in ocr_lines if x and clean_chunk_text(x)]
@@ -964,218 +924,6 @@ def domain_from_url(url: str) -> str:
         return urlparse(url).netloc.lower()
     except Exception:
         return ""
-
-
-# =========================================================
-# Chunk builders
-# =========================================================
-
-def build_title_chunks(slide_id: int, title_text: str) -> List[Dict[str, Any]]:
-    title_text = clean_chunk_text(title_text)
-    if looks_like_noise(title_text, min_chars=MIN_CHARS["title"]):
-        return []
-    return [make_chunk(slide_id, "title", title_text, order=0, sub_id=0)]
-
-
-def build_body_chunks_from_blocks(
-    slide_id: int,
-    body_blocks: List[Dict[str, Any]],
-    start_order: int = 100,
-) -> List[Dict[str, Any]]:
-    """
-    body_blocks format:
-    [
-        {"text": "...", "origin": (x, y), "block_idx": 0},
-        ...
-    ]
-    """
-    chunks: List[Dict[str, Any]] = []
-    sub_id = 0
-    order = start_order
-
-    for b in body_blocks:
-        raw = clean_chunk_text(b.get("text", ""))
-        if looks_like_noise(raw, min_chars=MIN_CHARS["body"]):
-            continue
-
-        # If block is short enough, keep it as one chunk
-        if len(raw.split()) <= 40:
-            chunks.append(
-                make_chunk(
-                    slide_id,
-                    "body",
-                    raw,
-                    order=order,
-                    sub_id=sub_id,
-                    meta={
-                        "origin": b.get("origin"),
-                        "block_idx": b.get("block_idx"),
-                        "source": "text_block",
-                    },
-                )
-            )
-            sub_id += 1
-            order += 1
-            continue
-
-        # Otherwise split into bullet-like or sentence-like units
-        candidates = split_bullets_or_lines(raw)
-        if len(candidates) <= 1:
-            candidates = split_into_two_sentence_chunks(raw, min_chars=MIN_CHARS["body"])
-        else:
-            candidates = merge_short_neighbors(candidates, max_words=40)
-
-        for piece in candidates:
-            piece = clean_chunk_text(piece)
-            if looks_like_noise(piece, min_chars=MIN_CHARS["body"]):
-                continue
-            chunks.append(
-                make_chunk(
-                    slide_id,
-                    "body",
-                    piece,
-                    order=order,
-                    sub_id=sub_id,
-                    meta={
-                        "origin": b.get("origin"),
-                        "block_idx": b.get("block_idx"),
-                        "source": "text_block_split",
-                    },
-                )
-            )
-            sub_id += 1
-            order += 1
-
-    return chunks
-
-
-def build_body_chunks_from_text(
-    slide_id: int,
-    body_text: str,
-    start_order: int = 100,
-) -> List[Dict[str, Any]]:
-    """
-    Fallback if you only have merged body text and not original blocks.
-    """
-    body_text = clean_chunk_text(body_text)
-    if looks_like_noise(body_text, min_chars=MIN_CHARS["body"]):
-        return []
-
-    candidates = split_bullets_or_lines(body_text)
-    if len(candidates) <= 1:
-        candidates = split_into_two_sentence_chunks(body_text, min_chars=MIN_CHARS["body"])
-    else:
-        candidates = merge_short_neighbors(candidates, max_words=40)
-
-    out = []
-    for i, piece in enumerate(candidates):
-        if looks_like_noise(piece, min_chars=MIN_CHARS["body"]):
-            continue
-        out.append(
-            make_chunk(
-                slide_id,
-                "body",
-                piece,
-                order=start_order + i,
-                sub_id=i,
-                meta={"source": "body_text_fallback"},
-            )
-        )
-    return out
-
-
-def build_desc_chunks(
-    slide_id: int,
-    desc_text: str,
-    start_order: int = 300,
-) -> List[Dict[str, Any]]:
-    desc_text = clean_chunk_text(desc_text)
-    if looks_like_noise(desc_text, min_chars=MIN_CHARS["desc"]):
-        return []
-
-    candidates = split_into_two_sentence_chunks(desc_text, min_chars=MIN_CHARS["desc"])
-    if not candidates:
-        candidates = [desc_text]
-
-    out = []
-    for i, piece in enumerate(candidates):
-        if looks_like_noise(piece, min_chars=MIN_CHARS["desc"]):
-            continue
-        out.append(
-            make_chunk(
-                slide_id,
-                "desc",
-                piece,
-                order=start_order + i,
-                sub_id=i,
-                meta={"source": "slide_description"},
-            )
-        )
-    return out
-
-
-def build_reference_chunks(
-    slide_id: int,
-    reference_obj: Optional[Dict[str, Any]],
-    start_order: int = 400,
-) -> List[Dict[str, Any]]:
-    if not reference_obj:
-        return []
-
-    out: List[Dict[str, Any]] = []
-    sub_id = 0
-    order = start_order
-
-    title = reference_obj.get("title")
-    venue = reference_obj.get("venue")
-    year = reference_obj.get("year")
-    raw = reference_obj.get("raw")
-    url = reference_obj.get("url")
-
-    if title and not looks_like_noise(title, min_chars=MIN_CHARS["reference_title"]):
-        out.append(make_chunk(slide_id, "reference_title", clean_chunk_text(title), order, sub_id))
-        sub_id += 1
-        order += 1
-
-    if venue and not looks_like_noise(str(venue), min_chars=MIN_CHARS["reference_venue"]):
-        out.append(make_chunk(slide_id, "reference_venue", clean_chunk_text(str(venue)), order, sub_id))
-        sub_id += 1
-        order += 1
-
-    if year is not None:
-        year_text = str(year)
-        if not looks_like_noise(year_text, min_chars=MIN_CHARS["reference_year"]):
-            out.append(make_chunk(slide_id, "reference_year", year_text, order, sub_id))
-            sub_id += 1
-            order += 1
-
-    if url and not looks_like_noise(url, min_chars=MIN_CHARS["reference_url"]):
-        out.append(
-            make_chunk(
-                slide_id,
-                "reference_url",
-                clean_chunk_text(url),
-                order,
-                sub_id,
-                meta={"domain": domain_from_url(url)},
-            )
-        )
-        sub_id += 1
-        order += 1
-
-    if raw and not looks_like_noise(raw, min_chars=MIN_CHARS["reference_raw"]):
-        out.append(make_chunk(slide_id, "reference_raw", clean_chunk_text(raw), order, sub_id))
-
-    return out
-
-
-def rebuild_unified_chunks(slide_record: Dict[str, Any]) -> List[Dict[str, Any]]:
-    chunks = []
-    for key in ["title_chunks", "body_chunks", "ocr_chunks", "desc_chunks", "reference_chunks"]:
-        chunks.extend(slide_record.get(key, []))
-    chunks.sort(key=lambda x: x["order"])
-    return chunks
-
 
 # =========================================================
 # Pipeline adapters for your current code
