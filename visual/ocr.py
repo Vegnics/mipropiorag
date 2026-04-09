@@ -4,7 +4,7 @@ import numpy as np
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import torch
-
+from lang_utils.raw_text_ops2 import clean_slide_text,clean_page_text
 device = "cuda" if torch.cuda.is_available() else "cpu"
 """
 proc0 = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
@@ -290,6 +290,7 @@ class OCR_Reader2:
         for row in rows:
             line_text = " ".join(item["text"] for item in row).strip()
             if line_text:
+                line_text = clean_page_text(line_text)
                 lines.append(line_text)
         return lines
     
