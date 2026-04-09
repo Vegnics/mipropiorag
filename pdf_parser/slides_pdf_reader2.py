@@ -363,7 +363,8 @@ def build_body_chunks_from_text(
     """
     Fallback if you only have merged body text and not original blocks.
     """
-    body_text = clean_chunk_text(body_text)
+    body_text = remove_isolated_characters(clean_chunk_text(body_text))
+    #body_text = clean_chunk_text(body_text)
     if looks_like_noise(body_text, min_chars=MIN_CHARS["body"]):
         return []
 
