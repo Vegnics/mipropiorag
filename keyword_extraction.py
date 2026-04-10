@@ -55,5 +55,7 @@ def extract_retrieval_keywords(text: str):
             cleaned.append(k)
     return remove_single_words_in_phrases_ordered(cleaned)
 
-question = "When charting the cumulative success rates of different self-assessment methodologies for binary categorization, exactly how many distinct challenges were analyzed in the provided graph?"
-print(extract_retrieval_keywords(question))
+
+if __name__ == "__main__":
+    question = "When charting the cumulative success rates of different self-assessment methodologies for binary categorization, exactly how many distinct challenges were analyzed in the provided graph?"
+    print(extract_retrieval_keywords(question))

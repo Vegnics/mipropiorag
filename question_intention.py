@@ -3,8 +3,8 @@ from transformers import AutoModel
 import torch
 from torch.nn import functional as F
 
-#MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2" #"sentence-transformers/all-mpnet-base-v2"
+MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+#MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2" #"sentence-transformers/all-mpnet-base-v2"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModel.from_pretrained(MODEL_NAME)
 model.eval()
@@ -37,85 +37,90 @@ def encode_texts(texts):
 
 QUESTION_DESCRIPTIONS = {
     "phrase_lookup":
-        "The question asks for the exact words written in the slide.",
+        "What are the exact words written in the slide? What specific phrase or terminology is used to describe a concept or idea?",
 
     "entity_lookup":
-        "The question asks for the name of something.",
+        "What is the name of something. How a name or concept is mentioned in the slide?",
 
     "numeric":
-        "The question asks for a number.",
+        "What is the number, value, or quantity of <something>. How a quantity can be obtained?",
 
     "list":
-        "The question asks for several items.",
+        "How the slide presents several items, bullet points, or list elements?",
 
     "definition":
-        "The question describes something and asks what it is called.",
+        "It describes something. What it is called, the meaning.",
 
     "property":
-        "The question asks what something is like or what it has.",
+        "What something is like or what it has?. What specific characteristics it possesses?.",
 
     "comparison":
-        "The question asks if things are the same or different.",
+        "The things in the image are the same, different, similar?. How they are compared.",
 
     "structure":
-        "The question asks about parts of something.",
+        "What are the parts of something. How its components are organized.",
 
     "purpose_why":
-        "The question asks why something is done.",
+        "Why something must be done?. What is the purpose to do something?. What is the reason behind a situation or fact?",
 
     "causal_reasoning":
-        "The question asks what causes something or what happens because of it.",
+        "What causes something or what happens because of it?. What is the effect or consequence of a situation?",
 
     "process_steps":
-        "The question asks about steps or order.",
+        "What are the steps or order to accomplish something?. What happens first, next, last? What is the sequence of events or stages in a process?",
 
     "mechanism_how":
-        "The question asks how something works.",
+        "How something works? What is the method, mechanism, or way that something happens or is done?",
 
     "visual_identification":
-        "The question asks about something shown in a picture or diagram.",
+        "Can this scenario be visualized in a picture or diagram. It is not about a visual concept. Can something be identified in the image.",
 
     "visual_alignment":
-        "The question asks how a picture and text relate to each other.",
+        "How a picture and text relate to each other?. What in the image corresponds to something in the text?",
 
     "dataset_metric":
-        "The question asks about a rule, score, or way to measure something.",
+        "Is a  rule, score, or way used to measure something?. How a metric is calculated, or what data is used for a certain purpose?",
 
     "system_limitation":
-        "The question asks about a problem or weakness.",
+        "What is the problem or weakness or limitation or drawbacks of something?",
 
     "compositional":
-        "The question needs more than one piece of information.",
+        "Do this need more than one piece of information?. How text, diagrams, and scenario can answer this together?",
 
     "example_case":
-        "The question describes a situation and asks which one it is."
+        "Does something describe a situation, or case, and asks which one it is?. An example or case description describe that phenomenom?"
 }
+
+def get_intention_scores(question):
+	sims = {}
+	for k,v in QUESTION_DESCRIPTIONS.items():
+		emb1 = encode_texts([question])[0]
+		emb2 = encode_texts([v])[0]
+		sim = emb_sim(emb1,emb2)
+		sims[k] = sim*10.0
+
+		## Softmax over similarities
+		sim_list = list(sims.values())
+		exp_sims = [torch.exp(torch.tensor(sim)) for sim in sim_list]
+		sum_exp_sims = sum(exp_sims)
+		for k, sim in sims.items():
+			sims[k] = torch.exp(torch.tensor(sim)) / sum_exp_sims
+	return sims
 
 
 #question = "When attempting to restore incomplete audio-visual streams, how is the backward noise-reduction step visually differentiated when it combines authentic input with artificially generated substitute data?"
 #question = "What is the initial mechanical setup required in the tangible mystery game before players can actively begin deducing the culprit's identity?"
-question = "Which specific 2022 academic manuscript involving latent representations is referenced regarding the creation of visual content from linguistic cues?"
+#question = "Which specific 2022 academic manuscript involving latent representations is referenced regarding the creation of visual content from linguistic cues?"
 #question = "When setting up the initial instructions for generating increasingly difficult gaming objectives, what specific format is used to supply supplementary contextual information to the system?"
 #question = " In the section discussing logic challenges, which slide illustrates a scenario where a participant creates a hidden sequence of hues and the opponent attempts to figure it out based on numeric feedback?"
+question = "Why do we intentionally block the architecture from evaluating certain elements of the sequence during training and generation?"
 
-sims = {}
+if __name__ == "__main__":
+	sims = get_intention_scores(question)
+	sorted_sims = sorted(sims.items(), key=lambda x: x[1], reverse=True)
 
-for k,v in QUESTION_DESCRIPTIONS.items():
-    emb1 = encode_texts([question])[0]
-    emb2 = encode_texts([v])[0]
-    sim = emb_sim(emb1,emb2)
-    sims[k] = sim*10.0
-
-## Softmax over similarities
-sim_list = list(sims.values())
-exp_sims = [torch.exp(torch.tensor(sim)) for sim in sim_list]
-sum_exp_sims = sum(exp_sims)
-for k, sim in sims.items():
-    sims[k] = torch.exp(torch.tensor(sim)) / sum_exp_sims
-sorted_sims = sorted(sims.items(), key=lambda x: x[1], reverse=True)
-
-sum_sims = sum(sorted_sims[i][1] for i in range(len(sorted_sims)))
-print("Question:", question)
-print("\nTop 5 most similar question types:")
-for k, sim in sorted_sims[:5]:
-    print(f"{k}: {sim:.4f}/{sum_sims:.4f}")
+	sum_sims = sum(sorted_sims[i][1] for i in range(len(sorted_sims)))
+	print("Question:", question)
+	print("\nTop most similar question types:")
+	for k, sim in sorted_sims:
+		print(f"{k}: {sim:.4f}/{sum_sims:.4f}")
