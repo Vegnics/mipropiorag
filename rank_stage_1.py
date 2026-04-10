@@ -225,8 +225,8 @@ if __name__ == "__main__":
 
     #QUESTION = ""
     # Example:
-    QUESTION = "Why do we intentionally block the architecture from evaluating certain elements of the sequence during training and generation?"
-
+    #QUESTION = "Why do we intentionally block the architecture from evaluating certain elements of the sequence during training and generation?"
+    QUESTION = "What specific term is mathematically equated to the process of generating outputs without any guiding prompts or context?"
     kwords = ", ".join(extract_retrieval_keywords_semantic(QUESTION, encode_texts, top_k=8))
     intention_scores = get_intention_scores(QUESTION)
 
@@ -235,8 +235,8 @@ if __name__ == "__main__":
     print(f"Intention scores: {intention_scores}")
     question_embedding = encode_one(QUESTION)
     kw_embedding = encode_one(kwords)
-    query_embedding = encode_one(kwords + " ." +QUESTION)
-    #query_embedding = 0.8*question_embedding + 0.2*kw_embedding
+    #query_embedding = encode_one(kwords + " ." +QUESTION)
+    query_embedding = 0.8*question_embedding #+ 0.2*kw_embedding
     query_embedding = F.normalize(query_embedding, p=2, dim=0)
 
     ranked = rank_slides_by_weighted_qadesc(
