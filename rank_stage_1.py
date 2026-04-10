@@ -235,7 +235,8 @@ if __name__ == "__main__":
     print(f"Intention scores: {intention_scores}")
     question_embedding = encode_one(QUESTION)
     kw_embedding = encode_one(kwords)
-    query_embedding = 0.8*question_embedding + 0.2*kw_embedding
+    query_embedding = encode_one(kwords + " ." +QUESTION)
+    #query_embedding = 0.8*question_embedding + 0.2*kw_embedding
     query_embedding = F.normalize(query_embedding, p=2, dim=0)
 
     ranked = rank_slides_by_weighted_qadesc(
